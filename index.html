@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>成大棒球打擊紀錄 v05 - 雲端動態名單版</title>
+  
+  <!-- XLSX 工具包 -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #272727;
+      --muted: #747474;
+      --line: #e6e1da;
+      --accent: #f39800;
+      --accentDark: #d77f00;
+      --accentSoft: #fff4df;
+      --accentText: #ffffff;
+      --danger: #b42318;
+      --ok: #147d3f;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif; }
+    body { min-height: 100vh; padding-bottom: calc(26px + env(safe-area-inset-bottom)); }
+    .app { max-width: 560px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 14px 24px; }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 6px 2px 16px; padding: 4px 2px 12px; border-bottom: 4px solid var(--accent); }
+    h1 { font-size: 25px; line-height: 1.15; margin: 0; font-weight: 800; }
+    .sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
+    .sync-status { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0; color: #555; }
+    .sync-status.online { background: #d4edda; color: #155724; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 15px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+    .section-title { font-size: 14px; color: var(--muted); font-weight: 700; letter-spacing: .02em; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media(max-width:390px) { .row { grid-template-columns: 1fr; } }
+    label { display: block; font-size: 13px; font-weight: 700; margin: 0 0 6px; }
+    input, select { width: 100%; min-height: 48px; border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 0 12px; font-size: 16px; color: var(--text); }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--text); border-radius: 14px; min-height: 50px; padding: 10px 14px; font-size: 16px; font-weight: 800; cursor: pointer; }
+    .btn:active { transform: scale(.985); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accentText); }
+    .btn.soft { background: var(--accentSoft); border-color: #f3d5a1; color: #8b5200; }
+    .btn.danger { color: var(--danger); border-color: #f0c7c3; background: #fff8f7; }
+    .btn.small { min-height: 34px; font-size: 13px; border-radius: 8px; padding: 5px 10px; }
+    .full { width: 100%; }
+    .pill-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+    .choice { min-height: 58px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; font-size: 17px; font-weight: 800; padding: 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
+    .choice.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .hidden { display: none !important; }
+    .player-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 45vh; overflow: auto; padding-right: 2px; }
+    .player-item-wrap { position: relative; display: flex; align-items: center; }
+    .player { width: 100%; border: 1px solid var(--line); border-radius: 13px; background: #fff; padding: 10px; text-align: left; min-height: 54px; display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 750; }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player .no { display: inline-flex; min-width: 29px; height: 29px; align-items: center; justify-content: center; background: #f0f0f2; border-radius: 9px; font-size: 12px; color: #555; }
+    .player .tag { display: block; color: var(--muted); font-size: 11px; font-weight: 600; margin-top: 2px; }
+    .edit-icon { padding: 6px; font-size: 14px; color: var(--muted); cursor: pointer; border: none; background: none; }
+    .summary { font-size: 15px; line-height: 1.7; }
+    .summary b { font-weight: 850; }
+    .statline { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .stat { background: var(--accentSoft); border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 750; color: #4c4c52; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; max-height: 300px; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; background: #fff; font-size: 12px; }
+    th, td { padding: 8px 7px; border-bottom: 1px solid #ececef; text-align: left; white-space: nowrap; }
+    th { position: sticky; top: 0; background: #fff4df; z-index: 1; font-weight: 800; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.38); display: flex; align-items: flex-end; justify-content: center; padding: 12px; z-index: 50; }
+    .sheet { width: min(560px, 100%); max-height: 88vh; overflow: auto; background: #fff; border-radius: 24px 24px 18px 18px; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px rgba(0,0,0,.15); }
+    .sheet h2 { margin: 0 0 6px; font-size: 22px; }
+    .sheet p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+    .bottom-bar { position: sticky; bottom: calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr 1.4fr; gap: 9px; margin-top: 12px; }
+    .sep { height: 1px; background: var(--line); margin: 14px 0; }
+    .empty { text-align: center; color: var(--muted); padding: 18px 8px; font-size: 13px; }
+    .toast { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(12px); background: #272727; color: #fff; padding: 10px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; opacity: 0; pointer-events: none; transition: .18s ease; z-index: 90; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>成大棒球｜打擊紀錄</h1>
+      <div class="sub">
+        手機點選式紀錄 · <span id="syncState" class="sync-status">單機儲存模式</span>
+      </div>
+    </div>
+    <button class="btn small" id="exportTop">匯出 Excel</button>
+  </header>
+
+  <div id="setupView">
+    <div class="card">
+      <div class="section-title">① 測試基本資料</div>
+      <div class="row">
+        <div>
+          <label for="sessionDate">日期</label>
+          <input id="sessionDate" type="date" />
+        </div>
+        <div>
+          <label for="feedMode">餵球模式</label>
+          <select id="feedMode">
+            <option value="正投">正投</option>
+            <option value="拋擊">拋擊</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label>餵球狀態</label>
+        <div class="pill-grid" id="feedStateChoices"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <span>② 選擇球員</span>
+        <button class="btn small soft" id="manageRosterBtn">⚙️ 預設名單重置</button>
+      </div>
+      <input id="playerSearch" placeholder="搜尋姓名或背號" inputmode="search" />
+      <div style="height:9px"></div>
+      <div class="player-list" id="playerList"></div>
+      <div style="height:10px"></div>
+      <button class="btn full soft" id="addPlayerBtn">＋ 新增球員到名單</button>
+    </div>
+  </div>
+
+  <div id="recordView" class="hidden">
+    <div class="card">
+      <div class="section-title">本輪設定</div>
+      <div class="summary" id="sessionSummary"></div>
+      <div class="statline">
+        <span class="stat" id="ballCount">已記錄 0 球</span>
+        <span class="stat" id="todayCount">今日共 0 球</span>
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn small" id="changePlayer">更換球員／設定</button>
+    </div>
+
+    <div class="card" id="readyCard">
+      <div class="section-title">下一球</div>
+      <button class="btn primary full" id="startRecord">球員擊出｜開始紀錄</button>
+    </div>
+
+    <div class="card hidden" id="stepCard">
+      <div class="section-title" id="stepTitle">擊球方向</div>
+      <div class="pill-grid" id="stepChoices"></div>
+      <div class="bottom-bar">
+        <button class="btn" id="stepBack">上一步</button>
+        <button class="btn primary" id="stepNext" disabled>下一步</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="confirmCard">
+      <div class="section-title">確認本球紀錄</div>
+      <div class="summary" id="confirmSummary"></div>
+      <div class="sep"></div>
+      <div class="pill-grid">
+        <button class="btn" id="editDirection">改方向</button>
+        <button class="btn" id="editContent">改內容</button>
+        <button class="btn" id="editQuality">改狀態</button>
+        <button class="btn danger" id="cancelBall">取消本球</button>
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn primary full" id="confirmBall">✓ 確認紀錄並進入下一球</button>
+    </div>
+
+    <div class="card">
+      <div class="section-title">當日紀錄</div>
+      <div id="recordTable"></div>
+      <div style="height:10px"></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" id="undoLast">復原上一筆</button>
+        <button class="btn small" id="exportBottom">匯出 Excel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 球員編輯／新增視窗 -->
+<div class="modal hidden" id="playerModal">
+  <div class="sheet">
+    <h2 id="modalTitle">新增／編輯球員</h2>
+    <p>更新後的名單會自動同步保存於雲端。</p>
+    <label for="pName">姓名</label>
+    <input id="pName" placeholder="例如：王小明" />
+    <div style="height:10px"></div>
+    <label for="pNo">背號（可留白）</label>
+    <input id="pNo" type="number" min="0" max="999" inputmode="numeric" placeholder="例如：24" />
+    <div style="height:10px"></div>
+    <label for="pTag">標籤/稱謂（可留白，如：球經、教練）</label>
+    <input id="pTag" placeholder="例如：光榮引退" />
+    <div style="height:14px"></div>
+    <div class="pill-grid">
+      <button class="btn danger hidden" id="deletePlayerBtn">刪除球員</button>
+      <button class="btn" id="cancelPlayerBtn">取消</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="btn primary full" id="savePlayerBtn">保存名單變更</button>
+  </div>
+</div>
+
+<script>
+// 預設原始球員名單
+const INITIAL_ROSTER = [
+  {id:'p1', no:1, name:'黃昱綸'}, {id:'p2', no:2, name:'陳聲皓'}, {id:'p3', no:3, name:'許昭威'}, {id:'p4', no:4, name:'蔡朋峻'},
+  {id:'p5', no:5, name:'鄭凱駿', tag:'光榮引退'}, {id:'p6', no:6, name:'王奐詠'}, {id:'p7', no:7, name:'楊哲豪', tag:'光榮引退'},
+  {id:'p8', no:8, name:'黃子承'}, {id:'p9', no:9, name:'謝翔聿'}, {id:'p10', no:10, name:'林芝葶', tag:'球經'}, {id:'p11', no:11, name:'劉訓廷'},
+  {id:'p12', no:12, name:'張永宸'}, {id:'p14', no:14, name:'江達智', tag:'指導老師'}, {id:'p16', no:16, name:'謝竺庭'}, {id:'p17', no:17, name:'王昱峻'},
+  {id:'p18', no:18, name:'顏辰峻'}, {id:'p19', no:19, name:'葉詠翔'}, {id:'p20', no:20, name:'趙昱齊'}, {id:'p22', no:22, name:'張冠瑀'},
+  {id:'p26', no:26, name:'許恒嘉'}, {id:'p27', no:27, name:'詹閔任'}, {id:'p28', no:28, name:'黃家庠'}, {id:'p30', no:30, name:'余書農', tag:'教練'},
+  {id:'p31', no:31, name:'林塏翔'}, {id:'p33', no:33, name:'張晉緁'}, {id:'p35', no:35, name:'王學睿'}, {id:'p40', no:40, name:'林建曄'},
+  {id:'p45', no:45, name:'黃尹昌'}, {id:'p46', no:46, name:'黃昱睿'}, {id:'p47', no:47, name:'林禹潼'}, {id:'p50', no:50, name:'李國豪', tag:'光榮引退'},
+  {id:'p51', no:51, name:'賴沂磊'}, {id:'p52', no:52, name:'楊睿升'}, {id:'p53', no:53, name:'羅傑羽'}, {id:'p55', no:55, name:'王祥予'},
+  {id:'p58', no:58, name:'王昱峻'}, {id:'p60', no:60, name:'鍾旻劭'}, {id:'p61', no:61, name:'謝苡廷', tag:'球經'}, {id:'p63', no:63, name:'卓廷典'},
+  {id:'p64', no:64, name:'蔡閎堯'}, {id:'p69', no:69, name:'林正展'}, {id:'p72', no:72, name:'尤允礽'}, {id:'p80', no:80, name:'羅博強'},
+  {id:'p82', no:82, name:'黃楷彤'}, {id:'p87', no:87, name:'林洺賢'}, {id:'p88', no:88, name:'楊曜亘'}, {id:'p90', no:90, name:'李珦琳'},
+  {id:'p91', no:91, name:'李有佳'}, {id:'p95', no:95, name:'歐陽仲恩'}, {id:'p96', no:96, name:'蔡政哲'}, {id:'p98', no:98, name:'黃中彥'},
+  {id:'p99', no:99, name:'楊承曄'},
+  {id:'p100', name:'吳尚霖'}, {id:'p101', name:'許宏倫'}, {id:'p102', name:'張探遠'}, {id:'p103', name:'李品鋐'},
+  {id:'p104', name:'高子淳'}, {id:'p105', name:'範譽'},   {id:'p106', name:'謝安綸'}, {id:'p107', name:'黃振淩'},
+  {id:'p108', name:'葉宸銨'}, {id:'p109', name:'蔡文偉'}, {id:'p110', name:'黃聖翔'}, {id:'p111', name:'張淳嘉'},
+  {id:'p112', name:'李秉軒'}, {id:'p113', name:'蔡益宸'}, {id:'p114', name:'高睿陽'}, {id:'p115', name:'王曦賢'},
+  {id:'p116', name:'呂承恩'}, {id:'p117', name:'簡右成'}, {id:'p118', name:'何駿廷'}
+];
+
+const FEED_STATES = ['未定','內角','外角','交錯'];
+const STEPS = [
+  {key:'direction', title:'擊球方向', options:['空','左','右','中','後']},
+  {key:'content', title:'擊球內容', options:['空','滾','低平','高平','高飛']},
+  {key:'quality', title:'擊球狀態', options:['空','扎實','切','軟']}
+];
+
+const $ = id => document.getElementById(id);
+const today = () => {
+  const d = new Date(); 
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+$('sessionDate').value = today();
+
+// Firebase 初始化
+const firebaseConfig = {
+  apiKey: "AIzaSyA_99IJATAYcts7Z2eWKvXA2imvMPaDD_M",
+  authDomain: "ncku-bat.firebaseapp.com",
+  databaseURL: "https://ncku-bat-default-rtdb.firebaseio.com",
+  projectId: "ncku-bat",
+  storageBucket: "ncku-bat.firebasestorage.app",
+  messagingSenderId: "182475967885",
+  appId: "1:182475967885:web:bd705f9b07d149131c81c4",
+  measurementId: "G-H4EYK6P4J5"
+};
+
+let dbRecordsRef = null;
+let dbPlayersRef = null;
+let useCloud = false;
+
+try {
+  firebase.initializeApp(firebaseConfig);
+  dbRecordsRef = firebase.database().ref('ncku_batting_records');
+  dbPlayersRef = firebase.database().ref('ncku_players');
+  useCloud = true;
+  $('syncState').textContent = '🟢 雲端同步中';
+  $('syncState').classList.add('online');
+} catch (e) {
+  console.error("Firebase 初始化失敗，改用本地端:", e);
+}
+
+let activeRoster = JSON.parse(localStorage.getItem('ncku_roster_v2') || 'null');
+let records = JSON.parse(localStorage.getItem('ncku_batting_records_v1') || '[]');
+let currentPlayer = null;
+let editingPlayerId = null;
+let currentFeedState = '未定';
+let stepIndex = 0;
+let draft = {direction:null, content:null, quality:null};
+
+// 即時連線 - 名單同步
+if (useCloud && dbPlayersRef) {
+  dbPlayersRef.on('value', (snapshot) => {
+    const val = snapshot.val();
+    if (val) {
+      activeRoster = Object.values(val);
+      localStorage.setItem('ncku_roster_v2', JSON.stringify(activeRoster));
+    } else {
+      // 雲端若為空，初次寫入預設名單
+      activeRoster = INITIAL_ROSTER;
+      syncRosterToCloud();
+    }
+    renderPlayers();
+  });
+} else {
+  if (!activeRoster) activeRoster = INITIAL_ROSTER;
+  renderPlayers();
+}
+
+// 即時連線 - 紀錄同步
+if (useCloud && dbRecordsRef) {
+  dbRecordsRef.on('value', (snapshot) => {
+    const val = snapshot.val();
+    records = val ? Object.values(val) : [];
+    localStorage.setItem('ncku_batting_records_v1', JSON.stringify(records));
+    if (currentPlayer) updateSessionSummary();
+    renderTable();
+  });
+}
+
+function syncRosterToCloud() {
+  if (useCloud && dbPlayersRef) {
+    const dataObj = {};
+    activeRoster.forEach(p => { dataObj[p.id] = p; });
+    dbPlayersRef.set(dataObj);
+  } else {
+    localStorage.setItem('ncku_roster_v2', JSON.stringify(activeRoster));
+    renderPlayers();
+  }
+}
+
+function getSortedRoster() {
+  return [...(activeRoster || [])].sort((a,b) => (Number(a.no)||9999) - (Number(b.no)||9999) || a.name.localeCompare(b.name,'zh-Hant'));
+}
+
+function renderFeedStates() {
+  $('feedStateChoices').innerHTML = '';
+  FEED_STATES.forEach(v => {
+    const b = document.createElement('button');
+    b.className = 'choice' + (v === currentFeedState ? ' selected' : '');
+    b.textContent = v;
+    b.onclick = () => { currentFeedState = v; renderFeedStates(); };
+    $('feedStateChoices').appendChild(b);
+  });
+}
+
+function renderPlayers() {
+  const q = $('playerSearch').value.trim().toLowerCase();$('playerList').innerHTML = '';
+  const arr = getSortedRoster().filter(p => !q || String(p.no).includes(q) || p.name.toLowerCase().includes(q));
+  
+  arr.forEach(p => {
+    const wrap = document.createElement('div');
+    wrap.className = 'player-item-wrap';
+    
+    const b = document.createElement('button');
+    b.className = 'player';
+    b.innerHTML = `
+      <div class="player-info">
+        <span class="no">${p.no ?? '—'}</span>
+        <span>${p.name}${p.tag ? `<span class="tag">${p.tag}</span>` : ''}</span>
+      </div>
+      <button class="edit-icon" title="編輯">✏️</button>
+    `;
+    
+    // 點擊卡片選擇球員
+    b.onclick = (e) => {
+      if (e.target.classList.contains('edit-icon')) {
+        openPlayerModal(p);
+      } else {
+        selectPlayer(p);
+      }
+    };
+
+    wrap.appendChild(b);
+    $('playerList').appendChild(wrap);
+  });
+}
+
+function openPlayerModal(p = null) {
+  if (p) {
+    editingPlayerId = p.id;
+    $('modalTitle').textContent = '編輯球員資料';
+    $('pName').value = p.name;
+    $('pNo').value = p.no ?? '';
+    $('pTag').value = p.tag ?? '';
+    $('deletePlayerBtn').classList.remove('hidden');
+  } else {
+    editingPlayerId = null;
+    $('modalTitle').textContent = '新增球員到名單';
+    $('pName').value = '';$('pNo').value = '';
+    $('pTag').value = '';$('deletePlayerBtn').classList.add('hidden');
+  }
+  $('playerModal').classList.remove('hidden');$('pName').focus();
+}
+
+function closePlayerModal() {
+  $('playerModal').classList.add('hidden');
+}
+
+function savePlayer() {
+  const name = $('pName').value.trim();
+  const no = $('pNo').value.trim();
+  const tag = $('pTag').value.trim();
+
+  if (!name) { alert('請輸入球員姓名'); return; }
+
+  if (editingPlayerId) {
+    // 編輯現有球員
+    const idx = activeRoster.findIndex(p => p.id === editingPlayerId);
+    if (idx !== -1) {
+      activeRoster[idx] = {
+        ...activeRoster[idx],
+        name,
+        no: no ? Number(no) : '',
+        tag: tag || undefined
+      };
+    }
+  } else {
+    // 新增新球員
+    const newId = 'p_' + Date.now();
+    activeRoster.push({
+      id: newId,
+      name,
+      no: no ? Number(no) : '',
+      tag: tag || undefined
+    });
+  }
+
+  syncRosterToCloud();
+  closePlayerModal();
+  showToast(editingPlayerId ? '球員資料已更新' : '已新增球員');
+}
+
+function deletePlayer() {
+  if (!editingPlayerId) return;
+  if (confirm('確定要從名單中刪除這位球員嗎？\n（先前已記錄的擊球數據不會受到影響）')) {
+    activeRoster = activeRoster.filter(p => p.id !== editingPlayerId);
+    syncRosterToCloud();
+    closePlayerModal();
+    showToast('已刪除該球員');
+  }
+}
+
+function selectPlayer(p) {
+  currentPlayer = p;
+  $('setupView').classList.add('hidden');$('recordView').classList.remove('hidden');
+  updateSessionSummary();
+  resetBall();
+  renderTable();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function updateSessionSummary() {
+  const date = $('sessionDate').value, mode =$('feedMode').value;
+  $('sessionSummary').innerHTML = `<b>${currentPlayer?.no ?? '—'}｜${currentPlayer?.name || ''}</b><br>${date} · ${mode} · ${currentFeedState}`;
+  const playerCount = records.filter(r => r.date === date && r.playerName === currentPlayer?.name).length;
+  const dayCount = records.filter(r => r.date === date).length;
+  $('ballCount').textContent = `本球員已記錄 ${playerCount} 球`;
+  $('todayCount').textContent = `今日共 ${dayCount} 球`;
+}
+
+function resetBall() {
+  draft = {direction:null, content:null, quality:null};
+  stepIndex = 0;
+  $('readyCard').classList.remove('hidden');
+  $('stepCard').classList.add('hidden');$('confirmCard').classList.add('hidden');
+}
+
+function startBall() {
+  draft = {direction:null, content:null, quality:null};
+  stepIndex = 0;
+  $('readyCard').classList.add('hidden');
+  $('confirmCard').classList.add('hidden');$('stepCard').classList.remove('hidden');
+  renderStep();
+}
+
+function renderStep() {
+  const s = STEPS[stepIndex];
+  $('stepTitle').textContent = `${stepIndex+1}/3｜${s.title}`;
+  $('stepChoices').innerHTML = '';
+  s.options.forEach(v => {
+    const b = document.createElement('button');
+    b.className = 'choice' + (draft[s.key] === v ? ' selected' : '');
+    b.textContent = v;
+    b.onclick = () => {
+      draft[s.key] = v;
+      if (stepIndex === 0 && v === '空') {
+        draft.content = '空';
+        draft.quality = '空';
+        saveBall(true);
+        return;
+      }
+      if (stepIndex < STEPS.length - 1) { stepIndex++; renderStep(); } else { showConfirm(); }
+    };
+    $('stepChoices').appendChild(b);
+  });
+  $('stepBack').textContent = stepIndex === 0 ? '取消' : '上一步';
+  $('stepNext').textContent = stepIndex === STEPS.length - 1 ? '確認內容' : '下一步';
+  $('stepNext').disabled = !draft[s.key];
+}
+
+function nextStep() {
+  if (stepIndex < STEPS.length - 1) { stepIndex++; renderStep(); } else showConfirm();
+}
+
+function backStep() {
+  if (stepIndex === 0) { resetBall(); } else { stepIndex--; renderStep(); }
+}
+
+function showConfirm() {
+  $('stepCard').classList.add('hidden');
+  $('confirmCard').classList.remove('hidden');$('confirmSummary').innerHTML = `方向：<b>${draft.direction}</b><br>內容：<b>${draft.content}</b><br>狀態：<b>${draft.quality}</b>`;
+}
+
+function editStep(i) {
+  stepIndex = i;
+  $('confirmCard').classList.add('hidden');$('stepCard').classList.remove('hidden');
+  renderStep();
+}
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove('show'), 1100);
+}
+
+function saveBall(autoMiss = false) {
+  const date = $('sessionDate').value, mode =$('feedMode').value;
+  const seq = records.filter(r => r.date === date && r.playerName === currentPlayer.name).length + 1;
+  const ballId = `${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  
+  const r = {
+    id: ballId,
+    date,
+    playerNo: currentPlayer.no ?? '',
+    playerName: currentPlayer.name,
+    feedMode: mode,
+    feedState: currentFeedState,
+    ballNo: seq,
+    direction: draft.direction,
+    content: draft.content,
+    quality: draft.quality,
+    timestamp: new Date().toLocaleString('zh-TW', {hour12:false})
+  };
+
+  if (useCloud && dbRecordsRef) {
+    dbRecordsRef.child(ballId).set(r);
+  } else {
+    records.push(r);
+    localStorage.setItem('ncku_batting_records_v1', JSON.stringify(records));
+    renderTable();
+    updateSessionSummary();
+  }
+
+  resetBall();
+  showToast(autoMiss ? '空｜已自動記錄' : '已記錄，下一球');
+}
+
+function renderTable() {
+  const date = $('sessionDate').value;
+  const arr = records.filter(r => r.date === date);
+  if (!arr.length) {
+    $('recordTable').innerHTML = '<div class="empty">今天還沒有紀錄</div>';
+    return;
+  }
+  $('recordTable').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>球員</th><th>模式</th><th>餵球</th><th>方向</th><th>內容</th><th>狀態</th><th>時間</th></tr>
+        </thead>
+        <tbody>
+          ${arr.map((r, i) => `
+            <tr>
+              <td>${i+1}</td>
+              <td>${r.playerNo ? `${r.playerNo} ` : ''}${r.playerName}</td>
+              <td>${r.feedMode}</td>
+              <td>${r.feedState}</td>
+              <td>${r.direction}</td>
+              <td>${r.content}</td>
+              <td>${r.quality}</td>
+              <td>${r.timestamp.split(' ').pop()}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function undoLast() {
+  const date = $('sessionDate').value;
+  let idx = -1;
+  for (let i = records.length - 1; i >= 0; i--) {
+    if (records[i].date === date) { idx = i; break; }
+  }
+  if (idx < 0) { alert('今天沒有可以復原的紀錄。'); return; }
+  
+  const r = records[idx];
+  if (confirm(`刪除上一筆？\n${r.playerName}｜${r.direction}・${r.content}・${r.quality}`)) {
+    if (useCloud && dbRecordsRef) {
+      dbRecordsRef.child(r.id).remove();
+    } else {
+      records.splice(idx, 1);
+      localStorage.setItem('ncku_batting_records_v1', JSON.stringify(records));
+      updateSessionSummary();
+      renderTable();
+    }
+  }
+}
+
+async function exportData() {
+  const date = $('sessionDate').value;
+  const arr = records.filter(r => r.date === date);
+  if (!arr.length) { alert('這個日期目前沒有紀錄可以匯出。'); return; }
+
+  if (!window.XLSX) {
+    alert('Excel 元件尚未載入。請確認網路連線後重試。');
+    return;
+  }
+
+  const headers = ['序號','日期','背號','球員','餵球模式','餵球狀態','球員第幾球','擊球方向','擊球內容','擊球狀態','紀錄時間'];
+  const data = arr.map((r, i) => [
+    i+1, r.date, r.playerNo, r.playerName, r.feedMode, r.feedState, r.ballNo,
+    r.direction, r.content, r.quality, r.timestamp
+  ]);
+  const filename = `成大棒球_打擊紀錄_${date}.xlsx`;
+
+  try {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['成大棒球打擊紀錄'],
+      ['紀錄日期', date, '紀錄筆數', arr.length],
+      [],
+      headers,
+      ...data
+    ]);
+    ws['!merges'] = [XLSX.utils.decode_range('A1:K1')];
+    ws['!cols'] = [
+      {wch:7},{wch:12},{wch:8},{wch:12},{wch:11},{wch:11},
+      {wch:12},{wch:11},{wch:11},{wch:11},{wch:22}
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, '打擊紀錄');
+
+    const bytes = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    const file = new File([bytes], filename, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+    if (navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+      try {
+        await navigator.share({ files: [file], title: `成大棒球打擊紀錄 ${date}` });
+        showToast('Excel 已建立');
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    }
+
+    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast(`已建立 ${filename}`);
+  } catch (err) {
+    console.error(err);
+    alert('Excel 匯出失敗。');
+  }
+}
+
+// 綁定事件監聽
+$('playerSearch').addEventListener('input', renderPlayers);
+$('addPlayerBtn').onclick = () => openPlayerModal();$('cancelPlayerBtn').onclick = closePlayerModal;
+$('savePlayerBtn').onclick = savePlayer;
+$('deletePlayerBtn').onclick = deletePlayer;
+
+$('manageRosterBtn').onclick = () => {
+  if (confirm('確定要將雲端名單重置回最初預設的球員清單嗎？')) {
+    activeRoster = INITIAL_ROSTER;
+    syncRosterToCloud();
+    showToast('名單已重置');
+  }
+};
+
+$('startRecord').onclick = startBall;
+$('stepNext').onclick = nextStep;
+$('stepBack').onclick = backStep;
+$('editDirection').onclick = () => editStep(0);$('editContent').onclick = () => editStep(1);
+$('editQuality').onclick = () => editStep(2);$('cancelBall').onclick = resetBall;
+$('confirmBall').onclick = () => saveBall(false);$('changePlayer').onclick = () => {
+  $('recordView').classList.add('hidden');$('setupView').classList.remove('hidden');
+  renderPlayers();
+  window.scrollTo({top:0, behavior:'smooth'});
+};
+$('undoLast').onclick = undoLast;
+$('exportTop').onclick = exportData;
+$('exportBottom').onclick = exportData;
+$('sessionDate').addEventListener('change', () => { renderTable(); updateSessionSummary(); });
+
+renderFeedStates();
+renderTable();
+</script>
+</body>
+</html>
