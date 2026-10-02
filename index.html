@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>成大棒球打擊紀錄 v05 - 雲端動態名單版</title>
+  <title>成大棒球打擊紀錄 v06 - 雲端動態名單版</title>
   
   <!-- XLSX 工具包 -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -67,7 +67,7 @@
     .statline { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     .stat { background: var(--accentSoft); border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 750; color: #4c4c52; }
     .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; max-height: 300px; }
-    table { width: 100%; border-collapse: collapse; min-width: 720px; background: #fff; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; min-width: 780px; background: #fff; font-size: 12px; }
     th, td { padding: 8px 7px; border-bottom: 1px solid #ececef; text-align: left; white-space: nowrap; }
     th { position: sticky; top: 0; background: #fff4df; z-index: 1; font-weight: 800; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.38); display: flex; align-items: flex-end; justify-content: center; padding: 12px; z-index: 50; }
@@ -109,6 +109,13 @@
           </select>
         </div>
       </div>
+      
+      <div style="margin-top:10px">
+        <label for="feederInput">③ 餵球的人（可搜尋選單或直接輸入名字）</label>
+        <input id="feederInput" list="feederOptions" placeholder="搜尋球員姓名/背號，或直接輸入..." />
+        <datalist id="feederOptions"></datalist>
+      </div>
+
       <div style="margin-top:10px">
         <label>餵球狀態</label>
         <div class="pill-grid" id="feedStateChoices"></div>
@@ -120,7 +127,16 @@
         <span>② 選擇球員</span>
         <button class="btn small soft" id="manageRosterBtn">⚙️ 預設名單重置</button>
       </div>
-      <input id="playerSearch" placeholder="搜尋姓名或背號" inputmode="search" />
+      <div class="row" style="grid-template-columns: 2fr 1fr; gap: 8px;">
+        <input id="playerSearch" placeholder="搜尋姓名或背號" inputmode="search" />
+        <select id="tagFilter">
+          <option value="ALL">全部身分</option>
+          <option value="PLAYER">現役球員</option>
+          <option value="光榮引退">光榮引退</option>
+          <option value="球經">球經</option>
+          <option value="COACH">教練/老師</option>
+        </select>
+      </div>
       <div style="height:9px"></div>
       <div class="player-list" id="playerList"></div>
       <div style="height:10px"></div>
@@ -223,7 +239,7 @@ const INITIAL_ROSTER = [
   {id:'p91', no:91, name:'李有佳'}, {id:'p95', no:95, name:'歐陽仲恩'}, {id:'p96', no:96, name:'蔡政哲'}, {id:'p98', no:98, name:'黃中彥'},
   {id:'p99', no:99, name:'楊承曄'},
   {id:'p100', name:'吳尚霖'}, {id:'p101', name:'許宏倫'}, {id:'p102', name:'張探遠'}, {id:'p103', name:'李品鋐'},
-  {id:'p104', name:'高子淳'}, {id:'p105', name:'範譽'},   {id:'p106', name:'謝安綸'}, {id:'p107', name:'黃振淩'},
+  {id:'p104', name:'高子淳'}, {id:'p105', name:'範譽'},  {id:'p106', name:'謝安綸'}, {id:'p107', name:'黃振淩'},
   {id:'p108', name:'葉宸銨'}, {id:'p109', name:'蔡文偉'}, {id:'p110', name:'黃聖翔'}, {id:'p111', name:'張淳嘉'},
   {id:'p112', name:'李秉軒'}, {id:'p113', name:'蔡益宸'}, {id:'p114', name:'高睿陽'}, {id:'p115', name:'王曦賢'},
   {id:'p116', name:'呂承恩'}, {id:'p117', name:'簡右成'}, {id:'p118', name:'何駿廷'}
@@ -238,7 +254,7 @@ const STEPS = [
 
 const $ = id => document.getElementById(id);
 const today = () => {
-  const d = new Date(); 
+  const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 $('sessionDate').value = today();
@@ -286,15 +302,16 @@ if (useCloud && dbPlayersRef) {
       activeRoster = Object.values(val);
       localStorage.setItem('ncku_roster_v2', JSON.stringify(activeRoster));
     } else {
-      // 雲端若為空，初次寫入預設名單
       activeRoster = INITIAL_ROSTER;
       syncRosterToCloud();
     }
     renderPlayers();
+    renderFeederOptions();
   });
 } else {
   if (!activeRoster) activeRoster = INITIAL_ROSTER;
   renderPlayers();
+  renderFeederOptions();
 }
 
 // 即時連線 - 紀錄同步
@@ -316,6 +333,7 @@ function syncRosterToCloud() {
   } else {
     localStorage.setItem('ncku_roster_v2', JSON.stringify(activeRoster));
     renderPlayers();
+    renderFeederOptions();
   }
 }
 
@@ -333,11 +351,36 @@ function renderFeedStates() {
     $('feedStateChoices').appendChild(b);
   });
 }
+renderFeedStates();
+
+function renderFeederOptions() {
+  const datalist = $('feederOptions');
+  datalist.innerHTML = '';
+  
+  getSortedRoster().forEach(p => {
+    const opt = document.createElement('option');
+    const labelText = `${p.no ? p.no + ' ' : ''}${p.name}${p.tag ? ' (' + p.tag + ')' : ''}`;
+    opt.value = p.name; // 選取後輸入框顯示名字
+    opt.label = labelText; // 下拉顯示背號與完整標籤
+    datalist.appendChild(opt);
+  });
+}
 
 function renderPlayers() {
-  const q = $('playerSearch').value.trim().toLowerCase();$('playerList').innerHTML = '';
-  const arr = getSortedRoster().filter(p => !q || String(p.no).includes(q) || p.name.toLowerCase().includes(q));
-  
+  const q = $('playerSearch').value.trim().toLowerCase();
+  const filterTag = $('tagFilter').value;
+  $('playerList').innerHTML = '';
+
+  const arr = getSortedRoster().filter(p => {
+    const matchSearch = !q || String(p.no).includes(q) || p.name.toLowerCase().includes(q);
+    let matchTag = true;
+    if (filterTag === 'PLAYER') matchTag = !p.tag;
+    else if (filterTag === 'COACH') matchTag = p.tag === '教練' || p.tag === '指導老師';
+    else if (filterTag !== 'ALL') matchTag = p.tag === filterTag;
+
+    return matchSearch && matchTag;
+  });
+
   arr.forEach(p => {
     const wrap = document.createElement('div');
     wrap.className = 'player-item-wrap';
@@ -352,7 +395,6 @@ function renderPlayers() {
       <button class="edit-icon" title="編輯">✏️</button>
     `;
     
-    // 點擊卡片選擇球員
     b.onclick = (e) => {
       if (e.target.classList.contains('edit-icon')) {
         openPlayerModal(p);
@@ -395,7 +437,6 @@ function savePlayer() {
   if (!name) { alert('請輸入球員姓名'); return; }
 
   if (editingPlayerId) {
-    // 編輯現有球員
     const idx = activeRoster.findIndex(p => p.id === editingPlayerId);
     if (idx !== -1) {
       activeRoster[idx] = {
@@ -406,7 +447,6 @@ function savePlayer() {
       };
     }
   } else {
-    // 新增新球員
     const newId = 'p_' + Date.now();
     activeRoster.push({
       id: newId,
@@ -417,6 +457,7 @@ function savePlayer() {
   }
 
   syncRosterToCloud();
+  renderFeederOptions();
   closePlayerModal();
   showToast(editingPlayerId ? '球員資料已更新' : '已新增球員');
 }
@@ -426,6 +467,7 @@ function deletePlayer() {
   if (confirm('確定要從名單中刪除這位球員嗎？\n（先前已記錄的擊球數據不會受到影響）')) {
     activeRoster = activeRoster.filter(p => p.id !== editingPlayerId);
     syncRosterToCloud();
+    renderFeederOptions();
     closePlayerModal();
     showToast('已刪除該球員');
   }
@@ -442,7 +484,8 @@ function selectPlayer(p) {
 
 function updateSessionSummary() {
   const date = $('sessionDate').value, mode =$('feedMode').value;
-  $('sessionSummary').innerHTML = `<b>${currentPlayer?.no ?? '—'}｜${currentPlayer?.name || ''}</b><br>${date} · ${mode} · ${currentFeedState}`;
+  const feeder = $('feederInput').value.trim() || '未指定';
+  $('sessionSummary').innerHTML = `<b>${currentPlayer?.no ?? '—'}｜${currentPlayer?.name || ''}</b><br>${date} · ${mode} (${feeder}) · ${currentFeedState}`;
   const playerCount = records.filter(r => r.date === date && r.playerName === currentPlayer?.name).length;
   const dayCount = records.filter(r => r.date === date).length;
   $('ballCount').textContent = `本球員已記錄 ${playerCount} 球`;
@@ -518,6 +561,7 @@ function showToast(msg) {
 
 function saveBall(autoMiss = false) {
   const date = $('sessionDate').value, mode =$('feedMode').value;
+  const feeder = $('feederInput').value.trim() || '未指定';
   const seq = records.filter(r => r.date === date && r.playerName === currentPlayer.name).length + 1;
   const ballId = `${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
   
@@ -526,6 +570,7 @@ function saveBall(autoMiss = false) {
     date,
     playerNo: currentPlayer.no ?? '',
     playerName: currentPlayer.name,
+    feederName: feeder,
     feedMode: mode,
     feedState: currentFeedState,
     ballNo: seq,
@@ -559,13 +604,14 @@ function renderTable() {
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>#</th><th>球員</th><th>模式</th><th>餵球</th><th>方向</th><th>內容</th><th>狀態</th><th>時間</th></tr>
+          <tr><th>#</th><th>球員</th><th>餵球人</th><th>模式</th><th>餵球</th><th>方向</th><th>內容</th><th>狀態</th><th>時間</th></tr>
         </thead>
         <tbody>
           ${arr.map((r, i) => `
             <tr>
               <td>${i+1}</td>
               <td>${r.playerNo ? `${r.playerNo} ` : ''}${r.playerName}</td>
+              <td>${r.feederName || '—'}</td>
               <td>${r.feedMode}</td>
               <td>${r.feedState}</td>
               <td>${r.direction}</td>
@@ -609,9 +655,9 @@ async function exportData() {
     return;
   }
 
-  const headers = ['序號','日期','背號','球員','餵球模式','餵球狀態','球員第幾球','擊球方向','擊球內容','擊球狀態','紀錄時間'];
+  const headers = ['序號','日期','背號','球員','餵球者','餵球模式','餵球狀態','球員第幾球','擊球方向','擊球內容','擊球狀態','紀錄時間'];
   const data = arr.map((r, i) => [
-    i+1, r.date, r.playerNo, r.playerName, r.feedMode, r.feedState, r.ballNo,
+    i+1, r.date, r.playerNo, r.playerName, r.feederName || '', r.feedMode, r.feedState, r.ballNo,
     r.direction, r.content, r.quality, r.timestamp
   ]);
   const filename = `成大棒球_打擊紀錄_${date}.xlsx`;
@@ -625,9 +671,9 @@ async function exportData() {
       headers,
       ...data
     ]);
-    ws['!merges'] = [XLSX.utils.decode_range('A1:K1')];
+    ws['!merges'] = [XLSX.utils.decode_range('A1:L1')];
     ws['!cols'] = [
-      {wch:7},{wch:12},{wch:8},{wch:12},{wch:11},{wch:11},
+      {wch:7},{wch:12},{wch:8},{wch:12},{wch:12},{wch:11},{wch:11},
       {wch:12},{wch:11},{wch:11},{wch:11},{wch:22}
     ];
     XLSX.utils.book_append_sheet(wb, ws, '打擊紀錄');
@@ -663,7 +709,7 @@ async function exportData() {
 }
 
 // 綁定事件監聽
-$('playerSearch').addEventListener('input', renderPlayers);
+$('playerSearch').addEventListener('input', renderPlayers);$('tagFilter').addEventListener('change', renderPlayers);
 $('addPlayerBtn').onclick = () => openPlayerModal();$('cancelPlayerBtn').onclick = closePlayerModal;
 $('savePlayerBtn').onclick = savePlayer;
 $('deletePlayerBtn').onclick = deletePlayer;
@@ -672,6 +718,7 @@ $('manageRosterBtn').onclick = () => {
   if (confirm('確定要將雲端名單重置回最初預設的球員清單嗎？')) {
     activeRoster = INITIAL_ROSTER;
     syncRosterToCloud();
+    renderFeederOptions();
     showToast('名單已重置');
   }
 };
@@ -690,9 +737,6 @@ $('undoLast').onclick = undoLast;
 $('exportTop').onclick = exportData;
 $('exportBottom').onclick = exportData;
 $('sessionDate').addEventListener('change', () => { renderTable(); updateSessionSummary(); });
-
-renderFeedStates();
-renderTable();
 </script>
 </body>
 </html>
