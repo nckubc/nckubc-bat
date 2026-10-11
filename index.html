@@ -111,8 +111,8 @@
       </div>
       
       <div style="margin-top:10px">
-        <label for="feederInput">③ 餵球的人（可搜尋選單或直接輸入名字）</label>
-        <input id="feederInput" list="feederOptions" placeholder="搜尋球員姓名/背號，或直接輸入..." />
+        <label for="feederInput">餵球的人</label>
+        <input id="feederInput" list="feederOptions" placeholder="搜尋或直接輸入..." />
         <datalist id="feederOptions"></datalist>
       </div>
 
@@ -328,7 +328,14 @@ if (useCloud && dbRecordsRef) {
 function syncRosterToCloud() {
   if (useCloud && dbPlayersRef) {
     const dataObj = {};
-    activeRoster.forEach(p => { dataObj[p.id] = p; });
+    activeRoster.forEach(p => { 
+      dataObj[p.id] = {
+        id: p.id,
+        name: p.name || '',
+        no: p.no !== undefined && p.no !== '' ? Number(p.no) : '',
+        tag: p.tag || null
+      };
+    });
     dbPlayersRef.set(dataObj);
   } else {
     localStorage.setItem('ncku_roster_v2', JSON.stringify(activeRoster));
@@ -359,9 +366,9 @@ function renderFeederOptions() {
   
   getSortedRoster().forEach(p => {
     const opt = document.createElement('option');
-    const labelText = `${p.no ? p.no + ' ' : ''}${p.name}${p.tag ? ' (' + p.tag + ')' : ''}`;
-    opt.value = p.name; // 選取後輸入框顯示名字
-    opt.label = labelText; // 下拉顯示背號與完整標籤
+    // 一行顯示：背號 姓名 (標籤)
+    const displayText = `${p.no ? p.no + ' ' : ''}${p.name}${p.tag ? ' (' + p.tag + ')' : ''}`;
+    opt.value = displayText; // 選取後輸入框呈現「背號 姓名」
     datalist.appendChild(opt);
   });
 }
@@ -443,7 +450,7 @@ function savePlayer() {
         ...activeRoster[idx],
         name,
         no: no ? Number(no) : '',
-        tag: tag || undefined
+        tag: tag || null
       };
     }
   } else {
@@ -452,7 +459,7 @@ function savePlayer() {
       id: newId,
       name,
       no: no ? Number(no) : '',
-      tag: tag || undefined
+      tag: tag || null
     });
   }
 
