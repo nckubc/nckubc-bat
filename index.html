@@ -90,7 +90,7 @@
         手機點選式紀錄 · <span id="syncState" class="sync-status">單機儲存模式</span>
       </div>
     </div>
-    <button class="btn small" id="exportTop">匯出 Excel</button>
+    <button class="btn small primary" id="exportTop">匯出並上傳雲端</button>
   </header>
 
   <div id="setupView">
@@ -190,7 +190,7 @@
       <div style="height:10px"></div>
       <div style="display:flex; gap:8px;">
         <button class="btn small" id="undoLast">復原上一筆</button>
-        <button class="btn small" id="exportBottom">匯出 Excel</button>
+        <button class="btn small primary" id="exportBottom">匯出並上傳雲端</button>
       </div>
     </div>
   </div>
@@ -366,9 +366,8 @@ function renderFeederOptions() {
   
   getSortedRoster().forEach(p => {
     const opt = document.createElement('option');
-    // 一行顯示：背號 姓名 (標籤)
     const displayText = `${p.no ? p.no + ' ' : ''}${p.name}${p.tag ? ' (' + p.tag + ')' : ''}`;
-    opt.value = displayText; // 選取後輸入框呈現「背號 姓名」
+    opt.value = displayText;
     datalist.appendChild(opt);
   });
 }
@@ -686,32 +685,44 @@ async function exportData() {
     XLSX.utils.book_append_sheet(wb, ws, '打擊紀錄');
 
     const bytes = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-    const file = new File([bytes], filename, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    
+    // 轉成 Base64
+    let binary = '';
+    const bytesArray = new Uint8Array(bytes);
+    for (let i = 0; i < bytesArray.byteLength; i++) {
+      binary += String.fromCharCode(bytesArray[i]);
+    }
+    const base64Data = btoa(binary);
 
-    if (navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
-      try {
-        await navigator.share({ files: [file], title: `成大棒球打擊紀錄 ${date}` });
-        showToast('Excel 已建立');
-        return;
-      } catch (err) {
-        if (err && err.name === 'AbortError') return;
-      }
+    showToast('正在上傳至指定雲端資料夾...');
+
+    // 使用您提供的 Apps Script 網址
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCWTJDYs_gcxKuU4MFM_LnHG7Sh_mQcxM4fdz7t4C-803eH1BfJfdr_H8pptxoBpHa-w/exec'; 
+    // 您指定的目標根資料夾 ID
+    const PARENT_FOLDER_ID = '1qMAxYUzt7MkdZSEQlQIM-p7Q_gHkcEFA';
+
+    const response = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ 
+        filename: filename, 
+        fileData: base64Data,
+        parentFolderId: PARENT_FOLDER_ID,
+        folderName: date // 例如 "2026-10-12"
+      })
+    });
+    
+    const result = await response.json();
+    if (result.status === 'success') {
+      showToast('已成功上傳至雲端日期資料夾！');
+    } else if (result.status === 'skipped') {
+      showToast('雲端已存在該日期的檔案，略過上傳。');
+    } else {
+      alert('上傳雲端失敗: ' + result.message);
     }
 
-    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-    showToast(`已建立 ${filename}`);
   } catch (err) {
     console.error(err);
-    alert('Excel 匯出失敗。');
+    alert('Excel 匯出或上傳失敗。');
   }
 }
 
